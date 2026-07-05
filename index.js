@@ -75,4 +75,3 @@ start().catch((e) => {
     logger.error(chalk.red('[ ❌ ] Fatal startup error:'), e.message);
     process.exit(1);
 });
-
