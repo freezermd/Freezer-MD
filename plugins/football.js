@@ -5,63 +5,44 @@ const leagueCodes = require('../lib/leagueCodes');
 class FootballPlugin {
   constructor() {
     this.api = new FootballAPI();
-    this.commands = [
-      '.football', 'footy', 'soccer', 'match', 'livescore'
-    ];
     this.name = 'Football Plugin';
     this.description = 'Real football scores, standings, and stats';
     this.version = '1.0.0';
   }
 
   async handle(sock, message) {
-    const { remoteJid, text, from } = message;
+    const { remoteJid, text } = message;
     const args = text.split(' ').slice(1);
     const subCommand = args[0]?.toLowerCase() || '';
 
     try {
       let response = '';
 
-      if (subCommand === 'live' || subCommand === 'livescore') {
-        const league = args[1]?.toLowerCase() || '';
-        response = await this.handleLive(league);
-      } else if (subCommand === 'fixtures') {
-        const league = args[1]?.toLowerCase() || '';
-        response = await this.handleFixtures(league);
+      if (subCommand === 'live') {
+        response = await this.handleLive();
       } else if (subCommand === 'today') {
         response = await this.handleToday();
       } else if (subCommand === 'tomorrow') {
         response = await this.handleTomorrow();
+      } else if (subCommand === 'fixtures') {
+        const league = args[1]?.toLowerCase() || '';
+        response = await this.handleFixtures(league);
       } else if (subCommand === 'standings') {
         const league = args[1]?.toLowerCase() || '';
         response = await this.handleStandings(league);
+      } else if (subCommand === 'scorers') {
+        const league = args[1]?.toLowerCase() || '';
+        response = await this.handleScorers(league);
       } else if (subCommand === 'team') {
         const teamName = args.slice(1).join(' ');
         response = await this.handleTeam(teamName);
-      } else if (subCommand === 'player') {
-        const playerName = args.slice(1).join(' ');
-        response = await this.handlePlayer(playerName);
-      } else if (subCommand === 'top') {
-        const league = args[1]?.toLowerCase() || '';
-        response = await this.handleTopScorers(league);
-      } else if (subCommand === 'news') {
-        response = await this.handleNews();
-      } else if (subCommand === 'transfers') {
-        response = await this.handleTransfers();
-      } else if (subCommand === 'injuries') {
+      } else if (subCommand === 'matches') {
         const teamName = args.slice(1).join(' ');
-        response = await this.handleInjuries(teamName);
-      } else if (subCommand === 'h2h') {
-        const teams = args.slice(1).join(' ');
-        response = await this.handleH2H(teams);
-      } else if (subCommand === 'match') {
-        const teams = args.slice(1).join(' ');
-        response = await this.handleMatch(teams);
+        response = await this.handleTeamMatches(teamName);
       } else if (subCommand === 'help') {
         response = this.handleHelp();
-      } else if (subCommand === 'cache') {
-        response = this.handleCache();
       } else {
-        response = await this.handleLive('');
+        response = await this.handleLive();
       }
 
       if (response.length > 4096) {
@@ -75,7 +56,7 @@ class FootballPlugin {
     } catch (error) {
       console.error('Football plugin error:', error);
       await sock.sendMessage(remoteJid, { 
-        text: '❌ Error: Unable to fetch football data. Please try again later.\n\nError: ' + error.message 
+        text: `❌ Error: ${error.message}\n\nPlease try again later or check your API key.` 
       });
     }
   }
@@ -100,101 +81,70 @@ class FootballPlugin {
     return chunks;
   }
 
-  async handleLive(league) {
-    const leagueId = league ? leagueCodes.getLeagueId(league) : null;
-    if (league && !leagueId) {
-      return `❌ Invalid league. Available: epl, laliga, serie-a, bundesliga, ligue1, ucl\n\nUsage: .football live [league]`;
+  formatMatch(match) {
+    const homeTeam = match.homeTeam?.name || 'Unknown';
+    const awayTeam = match.awayTeam?.name || 'Unknown';
+    const homeScore = match.score?.fullTime?.home !== undefined ? match.score.fullTime.home : match.score?.halfTime?.home;
+    const awayScore = match.score?.fullTime?.away !== undefined ? match.score.fullTime.away : match.score?.halfTime?.away;
+    
+    let status = match.status || 'UNKNOWN';
+    let statusDisplay = '';
+    
+    switch(status) {
+      case 'LIVE':
+      case 'IN_PLAY':
+        statusDisplay = '🔴 LIVE';
+        break;
+      case 'PAUSED':
+        statusDisplay = '⏸ PAUSED';
+        break;
+      case 'FINISHED':
+        statusDisplay = '✅ FINISHED';
+        break;
+      case 'SCHEDULED':
+        statusDisplay = '📅 SCHEDULED';
+        break;
+      case 'POSTPONED':
+        statusDisplay = '📅 POSTPONED';
+        break;
+      case 'CANCELED':
+        statusDisplay = '❌ CANCELED';
+        break;
+      default:
+        statusDisplay = `📋 ${status}`;
     }
+    
+    let result = `${homeTeam} ${homeScore !== undefined && homeScore !== null ? homeScore : '?'} - ${awayScore !== undefined && awayScore !== null ? awayScore : '?'} ${awayTeam}`;
+    
+    if (status === 'FINISHED') {
+      result = `${homeTeam} ${homeScore} - ${awayScore} ${awayTeam}`;
+    }
+    
+    return { result, statusDisplay };
+  }
 
-    const matches = await this.api.getLiveMatches(leagueId);
-
+  async handleLive() {
+    const matches = await this.api.getLiveMatches();
+    
     if (!matches || matches.length === 0) {
-      if (leagueId) {
-        return `⚽ No live matches available right now for ${leagueCodes.getLeagueName(leagueId)}.`;
-      }
       return '⚽ No live matches available right now.';
     }
 
     let response = '⚽ LIVE MATCHES\n━━━━━━━━━━━━━━━━━━━━━━\n';
     
     for (const match of matches.slice(0, 10)) {
-      const homeTeam = match.teams.home.name;
-      const awayTeam = match.teams.away.name;
-      const homeScore = match.goals.home !== null ? match.goals.home : 0;
-      const awayScore = match.goals.away !== null ? match.goals.away : 0;
-      const elapsed = match.fixture.status.elapsed || 0;
-      const venue = match.fixture.venue.name || 'Unknown';
-      const competition = match.league.name || 'Unknown';
-      const emoji = leagueCodes.getLeagueEmoji(match.league.id);
+      const { result, statusDisplay } = this.formatMatch(match);
+      const competition = match.competition?.name || 'Unknown';
+      const emoji = leagueCodes.getCompetitionEmoji(match.competition?.code);
       
       response += `\n${emoji} ${competition}`;
-      response += `\n🔴 ${homeTeam} ${homeScore} - ${awayScore} ${awayTeam}`;
-      response += `\n⏱ ${elapsed}'`;
+      response += `\n${result}`;
+      response += `\n${statusDisplay}`;
       
-      if (match.fixture.status.short === 'HT') {
-        response += ` (Half Time)`;
-      } else if (match.fixture.status.short === 'FT') {
-        response += ` (Full Time)`;
+      if (match.venue) {
+        response += `\n🏟 ${match.venue}`;
       }
       
-      const scorers = match.goals?.home_scorers || match.goals?.away_scorers || [];
-      if (scorers.length > 0) {
-        response += '\n⚽ Scorers:';
-        for (const scorer of scorers.slice(0, 3)) {
-          response += `\n  • ${scorer.name} (${scorer.minute}')`;
-        }
-        if (scorers.length > 3) {
-          response += `\n  • +${scorers.length - 3} more`;
-        }
-      }
-      
-      const cards = match.cards || [];
-      const yellows = cards.filter(c => c.type === 'Yellow');
-      const reds = cards.filter(c => c.type === 'Red');
-      if (yellows.length > 0) {
-        response += `\n🟨 ${yellows.map(c => c.player.name).join(', ')}`;
-      }
-      if (reds.length > 0) {
-        response += `\n🟥 ${reds.map(c => c.player.name).join(', ')}`;
-      }
-      
-      response += `\n🏟 ${venue}`;
-      if (match.fixture.referee) {
-        response += `\n👨‍⚖️ ${match.fixture.referee}`;
-      }
-      response += '\n━━━━━━━━━━━━━━━━━━━━━━';
-    }
-    
-    return response;
-  }
-
-  async handleFixtures(league) {
-    const leagueId = leagueCodes.getLeagueId(league);
-    if (!leagueId) {
-      return '❌ Invalid league. Available: epl, laliga, serie-a, bundesliga, ligue1, ucl\n\nUsage: .football fixtures [league]';
-    }
-
-    const fixtures = await this.api.getFixtures(leagueId);
-    if (!fixtures || fixtures.length === 0) {
-      return `📋 No upcoming fixtures for ${leagueCodes.getLeagueName(leagueId)}`;
-    }
-
-    const upcoming = fixtures.filter(f => f.fixture.status.short === 'NS').slice(0, 10);
-    if (upcoming.length === 0) {
-      return `📋 No upcoming fixtures for ${leagueCodes.getLeagueName(leagueId)}`;
-    }
-
-    const emoji = leagueCodes.getLeagueEmoji(leagueId);
-    let response = `📋 UPCOMING FIXTURES\n${emoji} ${leagueCodes.getLeagueName(leagueId)}\n━━━━━━━━━━━━━━━━━━━━━━\n`;
-    
-    for (const fixture of upcoming) {
-      const date = new Date(fixture.fixture.date);
-      const time = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-      const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
-      
-      response += `\n📅 ${dateStr} at ${time}`;
-      response += `\n⚔️ ${fixture.teams.home.name} vs ${fixture.teams.away.name}`;
-      response += `\n🏟 ${fixture.fixture.venue.name || 'TBD'}`;
       response += '\n━━━━━━━━━━━━━━━━━━━━━━';
     }
     
@@ -202,44 +152,96 @@ class FootballPlugin {
   }
 
   async handleToday() {
-    const date = new Date().toISOString().split('T')[0];
-    return this.handleFixturesByDate(date, 'today');
+    const matches = await this.api.getTodayMatches();
+    
+    if (!matches || matches.length === 0) {
+      return '📋 No matches scheduled for today.';
+    }
+
+    const today = new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    let response = `📅 TODAY'S MATCHES\n${today}\n━━━━━━━━━━━━━━━━━━━━━━\n`;
+    
+    const sortedMatches = matches.sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate));
+    
+    for (const match of sortedMatches.slice(0, 15)) {
+      const time = new Date(match.utcDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const competition = match.competition?.name || 'Unknown';
+      const emoji = leagueCodes.getCompetitionEmoji(match.competition?.code);
+      const homeTeam = match.homeTeam?.name || 'Unknown';
+      const awayTeam = match.awayTeam?.name || 'Unknown';
+      
+      response += `\n${time} ${emoji} ${competition}`;
+      response += `\n${homeTeam} vs ${awayTeam}`;
+      
+      if (match.venue) {
+        response += `\n🏟 ${match.venue}`;
+      }
+      
+      response += '\n━━━━━━━━━━━━━━━━━━━━━━';
+    }
+    
+    return response;
   }
 
   async handleTomorrow() {
-    const date = new Date(Date.now() + 86400000).toISOString().split('T')[0];
-    return this.handleFixturesByDate(date, 'tomorrow');
-  }
-
-  async handleFixturesByDate(date, dayLabel) {
-    const matches = [];
-    const popularLeagues = [39, 140, 135, 78, 61, 2];
+    const matches = await this.api.getTomorrowMatches();
     
-    for (const leagueId of popularLeagues) {
-      try {
-        const fixtures = await this.api.getFixtures(leagueId, date);
-        matches.push(...fixtures);
-      } catch (error) {
-        console.error(`Error fetching fixtures for league ${leagueId}:`, error.message);
-      }
+    if (!matches || matches.length === 0) {
+      return '📋 No matches scheduled for tomorrow.';
     }
 
-    if (matches.length === 0) {
-      return `📋 No matches scheduled for ${dayLabel || new Date(date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}.`;
-    }
-
-    const dayName = dayLabel || new Date(date).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
-    let response = `📋 MATCHES ON ${dayName}\n━━━━━━━━━━━━━━━━━━━━━━\n`;
+    const tomorrow = new Date(Date.now() + 86400000).toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+    let response = `📅 TOMORROW'S MATCHES\n${tomorrow}\n━━━━━━━━━━━━━━━━━━━━━━\n`;
     
-    const sortedMatches = matches.sort((a, b) => new Date(a.fixture.date) - new Date(b.fixture.date));
+    const sortedMatches = matches.sort((a, b) => new Date(a.utcDate) - new Date(b.utcDate));
     
     for (const match of sortedMatches.slice(0, 15)) {
-      const time = new Date(match.fixture.date).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-      const emoji = leagueCodes.getLeagueEmoji(match.league.id);
+      const time = new Date(match.utcDate).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const competition = match.competition?.name || 'Unknown';
+      const emoji = leagueCodes.getCompetitionEmoji(match.competition?.code);
+      const homeTeam = match.homeTeam?.name || 'Unknown';
+      const awayTeam = match.awayTeam?.name || 'Unknown';
       
-      response += `\n${time} ${emoji} ${match.league.name}`;
-      response += `\n${match.teams.home.name} vs ${match.teams.away.name}`;
-      response += `\n🏟 ${match.fixture.venue.name || 'TBD'}`;
+      response += `\n${time} ${emoji} ${competition}`;
+      response += `\n${homeTeam} vs ${awayTeam}`;
+      
+      if (match.venue) {
+        response += `\n🏟 ${match.venue}`;
+      }
+      
+      response += '\n━━━━━━━━━━━━━━━━━━━━━━';
+    }
+    
+    return response;
+  }
+
+  async handleFixtures(league) {
+    const competitionCode = leagueCodes.getCompetitionCode(league);
+    if (!competitionCode) {
+      return '❌ Invalid league. Available: epl, laliga, serie-a, bundesliga, ligue1, ucl\n\nUsage: .football fixtures [league]';
+    }
+
+    const matches = await this.api.getCompetitionMatches(competitionCode);
+    const upcoming = matches.filter(m => m.status === 'SCHEDULED').slice(0, 10);
+    
+    if (upcoming.length === 0) {
+      return `📋 No upcoming fixtures for ${leagueCodes.getCompetitionName(competitionCode)}`;
+    }
+
+    const emoji = leagueCodes.getCompetitionEmoji(competitionCode);
+    let response = `📋 UPCOMING FIXTURES\n${emoji} ${leagueCodes.getCompetitionName(competitionCode)}\n━━━━━━━━━━━━━━━━━━━━━━\n`;
+    
+    for (const match of upcoming) {
+      const date = new Date(match.utcDate);
+      const dateStr = date.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' });
+      const time = date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const homeTeam = match.homeTeam?.name || 'Unknown';
+      const awayTeam = match.awayTeam?.name || 'Unknown';
+      const venue = match.venue || 'TBD';
+      
+      response += `\n📅 ${dateStr} at ${time}`;
+      response += `\n${homeTeam} vs ${awayTeam}`;
+      response += `\n🏟 ${venue}`;
       response += '\n━━━━━━━━━━━━━━━━━━━━━━';
     }
     
@@ -247,23 +249,198 @@ class FootballPlugin {
   }
 
   async handleStandings(league) {
-    const leagueId = leagueCodes.getLeagueId(league);
-    if (!leagueId) {
+    const competitionCode = leagueCodes.getCompetitionCode(league);
+    if (!competitionCode) {
       return '❌ Invalid league. Available: epl, laliga, serie-a, bundesliga, ligue1, ucl\n\nUsage: .football standings [league]';
     }
 
-    const standingsData = await this.api.getStandings(leagueId);
+    const standingsData = await this.api.getCompetitionStandings(competitionCode);
+    
     if (!standingsData || standingsData.length === 0) {
-      return `📊 No standings available for ${leagueCodes.getLeagueName(leagueId)}`;
+      return `📊 No standings available for ${leagueCodes.getCompetitionName(competitionCode)}`;
     }
 
-    const standings = standingsData[0].league.standings[0];
-    const emoji = leagueCodes.getLeagueEmoji(leagueId);
-    const country = leagueCodes.getLeagueCountry(leagueId);
-    
-    let response = `📊 STANDINGS\n${emoji} ${leagueCodes.getLeagueName(leagueId)} (${country})\n━━━━━━━━━━━━━━━━━━━━━━\n`;
+    const standings = standingsData[0]?.table || [];
+    if (standings.length === 0) {
+      return `📊 No standings available for ${leagueCodes.getCompetitionName(competitionCode)}`;
+    }
+
+    const emoji = leagueCodes.getCompetitionEmoji(competitionCode);
+    let response = `🏆 ${leagueCodes.getCompetitionName(competitionCode)}\n━━━━━━━━━━━━━━━━━━━━━━\n`;
     
     for (const team of standings.slice(0, 10)) {
+      const position = team.position;
+      const name = team.team?.name || 'Unknown';
+      const points = team.points || 0;
+      const played = team.playedGames || 0;
+      const wins = team.won || 0;
+      const draws = team.draw || 0;
+      const losses = team.lost || 0;
+      const goalsFor = team.goalsFor || 0;
+      const goalsAgainst = team.goalsAgainst || 0;
+      const goalDiff = team.goalDifference || 0;
+      
+      let prefix = '';
+      if (position <= 4) {
+        prefix = '🔵 ';
+      } else if (position <= 7) {
+        prefix = '🟢 ';
+      } else if (position >= standings.length - 2) {
+        prefix = '🔴 ';
+      }
+      
+      response += `\n${prefix}${position}. ${name}`;
+      response += `\n   P:${played} W:${wins} D:${draws} L:${losses}`;
+      response += `\n   GF:${goalsFor} GA:${goalsAgainst} +/-:${goalDiff}`;
+      response += `\n   ${points} PTS`;
+      response += '\n━━━━━━━━━━━━━━━━━━━━━━';
+    }
+    
+    return response;
+  }
+
+  async handleScorers(league) {
+    const competitionCode = leagueCodes.getCompetitionCode(league);
+    if (!competitionCode) {
+      return '❌ Invalid league. Available: epl, laliga, serie-a, bundesliga, ligue1, ucl\n\nUsage: .football scorers [league]';
+    }
+
+    const scorers = await this.api.getCompetitionScorers(competitionCode, 20);
+    
+    if (!scorers || scorers.length === 0) {
+      return `⚽ No top scorers data for ${leagueCodes.getCompetitionName(competitionCode)}`;
+    }
+
+    const emoji = leagueCodes.getCompetitionEmoji(competitionCode);
+    let response = `⚽ TOP SCORERS\n${emoji} ${leagueCodes.getCompetitionName(competitionCode)}\n━━━━━━━━━━━━━━━━━━━━━━\n`;
+    
+    for (const scorer of scorers.slice(0, 20)) {
+      const name = scorer.player?.name || 'Unknown';
+      const team = scorer.team?.name || 'Unknown';
+      const goals = scorer.goals || 0;
+      const assists = scorer.assists || 0;
+      const position = scorer.player?.position || 'N/A';
+      
+      response += `\n${scorers.indexOf(scorer) + 1}. ${name}`;
+      response += `\n   ⚽ ${goals} goals`;
+      if (assists > 0) {
+        response += ` | 🎯 ${assists} assists`;
+      }
+      response += `\n   🏟 ${team}`;
+      response += `\n   📍 ${position}`;
+      response += '\n━━━━━━━━━━━━━━━━━━━━━━';
+    }
+    
+    return response;
+  }
+
+  async handleTeam(teamName) {
+    if (!teamName) {
+      return '❌ Please specify a team name.\n\nUsage: .football team [team name]';
+    }
+
+    const team = await this.api.getTeamByName(teamName);
+    if (!team) {
+      return `❌ Team "${teamName}" not found. Please try a different search.`;
+    }
+
+    let response = `🏟️ TEAM INFO\n${team.name}\n━━━━━━━━━━━━━━━━━━━━━━\n`;
+    
+    if (team.crest) {
+      response += `\n🖼 Crest: ${team.crest}`;
+    }
+    
+    response += `\n📍 ${team.address || 'N/A'}`;
+    response += `\n📅 Founded: ${team.founded || 'N/A'}`;
+    response += `\n🌍 Country: ${team.area?.name || 'N/A'}`;
+    response += `\n🏟 Stadium: ${team.venue || 'N/A'}`;
+    
+    if (team.coach) {
+      response += `\n👨‍🏫 Coach: ${team.coach.name || 'N/A'}`;
+    }
+    
+    if (team.competitions) {
+      response += '\n\n🏆 Competitions:';
+      for (const comp of team.competitions.slice(0, 3)) {
+        response += `\n• ${comp.name}`;
+      }
+    }
+    
+    return response;
+  }
+
+  async handleTeamMatches(teamName) {
+    if (!teamName) {
+      return '❌ Please specify a team name.\n\nUsage: .football matches [team name]';
+    }
+
+    const team = await this.api.getTeamByName(teamName);
+    if (!team) {
+      return `❌ Team "${teamName}" not found. Please try a different search.`;
+    }
+
+    const matches = await this.api.getTeamMatches(team.id, null, 10);
+    
+    if (!matches || matches.length === 0) {
+      return `📋 No matches found for ${team.name}`;
+    }
+
+    let response = `📋 ${team.name}\n━━━━━━━━━━━━━━━━━━━━━━\n`;
+    
+    for (const match of matches.slice(0, 10)) {
+      const { result, statusDisplay } = this.formatMatch(match);
+      const date = new Date(match.utcDate);
+      const dateStr = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+      
+      response += `\n${dateStr}: ${result}`;
+      response += `\n${statusDisplay}`;
+      if (match.competition?.name) {
+        response += `\n${match.competition.name}`;
+      }
+      response += '\n━━━━━━━━━━━━━━━━━━━━━━';
+    }
+    
+    return response;
+  }
+
+  handleHelp() {
+    return `⚽ FOOTBALL COMMANDS\n━━━━━━━━━━━━━━━━━━━━━━\n
+📋 Available Commands:
+\n🔴 Live Matches
+.football live
+\n📅 Today's Matches
+.football today
+\n📅 Tomorrow's Matches
+.football tomorrow
+\n📋 Fixtures
+.football fixtures [league]
+\n📊 Standings
+.football standings [league]
+\n⚽ Top Scorers
+.football scorers [league]
+\n🏟️ Team Info
+.football team [name]
+\n📋 Team Matches
+.football matches [name]
+\nℹ️ Help
+.football help
+
+Available Leagues:
+epl, premier, laliga, serie-a, bundesliga, ligue1, ucl, champions
+
+Examples:
+.football live
+.football standings epl
+.football team Arsenal
+.football fixtures laliga
+.football scorers bundesliga
+.football matches Barcelona
+
+Powered by Football-Data.org ⚽`;
+  }
+}
+
+module.exports = FootballPlugin; team of standings.slice(0, 10)) {
       const position = team.rank;
       const name = team.team.name;
       const points = team.points;
