@@ -4,7 +4,7 @@ module.exports = {
   PREFIX: '.',
   SESSION_ID: 'session',
   SESSION_DIR: './sessions',
-  OWNER_NUMBER: '1234567890',
+  OWNER_NUMBER: '254791553079',
   PUBLIC_MODE: true,
 NEWS_API_KEY: process.env.NEWS_API_KEY || '3cf44e2172724ffa912c56df48c93adc',
   
