@@ -8,7 +8,7 @@ module.exports = {
 
     async execute({ sock, msg, from, args, config }) {
         try {
-            const api = new NewsAPI(3cf44e2172724ffa912c56df48c93adc);
+            const api = new NewsAPI();
             const subCommand = args[0]?.toLowerCase() || '';
             const query = args.slice(1).join(' ');
 
