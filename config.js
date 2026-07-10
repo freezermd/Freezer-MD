@@ -1,6 +1,6 @@
 // config.js (update your existing config.js)
 module.exports = {
-  BOT_NAME: 'MyBot',
+  BOT_NAME: 'Freezer-MD',
   PREFIX: '.',
   SESSION_ID: 'session',
   SESSION_DIR: './sessions',
