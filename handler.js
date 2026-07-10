@@ -3,6 +3,8 @@ const fs = require('fs');
 const path = require('path');
 const logger = require('./lib/logger');
 const config = require('./config');
+const { isOwner } = require('./lib/owner');
+
 
 const commands = new Map();
 
@@ -39,11 +41,29 @@ async function handleMessage(sock, msg, text) {
     if (!cmd) return;
 
     const from = msg.key.remoteJid;
+
     try {
-        await cmd.execute({ sock, msg, args, from, config });
+        // Owner-only protection
+        if (cmd.ownerOnly && !isOwner(msg.key.participant || msg.key.remoteJid)) {
+            return await sock.sendMessage(from, {
+                text: "⛔ This command is for the bot owner only."
+            });
+        }
+
+        await cmd.execute({
+            sock,
+            msg,
+            args,
+            from,
+            config
+        });
+
     } catch (e) {
         logger.error(`[ ❌ ] Command "${cmdName}" failed:`, e.message);
-        await sock.sendMessage(from, { text: `⚠️ Something went wrong running *${cmdName}*.` });
+
+        await sock.sendMessage(from, {
+            text: `⚠️ Something went wrong running *${cmdName}*.`
+        });
     }
 }
 
