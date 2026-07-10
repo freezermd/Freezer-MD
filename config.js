@@ -1,11 +1,10 @@
-'use strict';
-require('dotenv').config();
-
+// config.js (update your existing config.js)
 module.exports = {
-    BOT_NAME: process.env.BOT_NAME || 'Freezer-MD',
-    PREFIX: process.env.PREFIX || '.',
-    SESSION_ID: process.env.SESSION_ID || '',
-    SESSION_DIR: process.env.SESSION_DIR || './session',
-    OWNER_NUMBER: process.env.OWNER_NUMBER || '',
-    PUBLIC_MODE: (process.env.PUBLIC_MODE || 'true') === 'true',
+  BOT_NAME: 'MyBot',
+  PREFIX: '.',
+  SESSION_ID: 'session',
+  SESSION_DIR: './sessions',
+  OWNER_NUMBER: '1234567890',
+  PUBLIC_MODE: true,
+  FOOTBALL_API_KEY: process.env.FOOTBALL_API_KEY || 'YOUR_API_KEY_HERE'
 };
