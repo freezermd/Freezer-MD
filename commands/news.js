@@ -28,7 +28,6 @@ module.exports = {
                 response = await handleTopHeadlines(api);
             }
 
-            // Split message if too long
             if (response.length > 4096) {
                 const chunks = splitMessage(response);
                 for (const chunk of chunks) {
@@ -45,8 +44,6 @@ module.exports = {
         }
     }
 };
-
-// Helper Functions
 
 function splitMessage(text) {
     const chunks = [];
@@ -144,8 +141,6 @@ function getNumberEmoji(index) {
     const emojis = ['1️⃣', '2️⃣', '3️⃣', '4️⃣', '5️⃣', '6️⃣', '7️⃣', '8️⃣', '9️⃣', '🔟'];
     return emojis[index] || `${index + 1}.`;
 }
-
-// Command Handlers
 
 async function handleTopHeadlines(api) {
     const articles = await api.getTopHeadlines('us', null, 10);
