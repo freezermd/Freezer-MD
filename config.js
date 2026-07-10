@@ -6,5 +6,7 @@ module.exports = {
   SESSION_DIR: './sessions',
   OWNER_NUMBER: '1234567890',
   PUBLIC_MODE: true,
-  FOOTBALL_API_KEY: process.env.FOOTBALL_API_KEY || 'YOUR_API_KEY_HERE'
+
+  
+  FOOTBALL_API_KEY: process.env.FOOTBALL_API_KEY || 'bb30864e187c4791a01c29db90a02b6d'
 };
