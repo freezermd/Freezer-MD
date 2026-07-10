@@ -1,0 +1,15 @@
+{
+  "autoTyping": true,
+  "autoRecording": true,
+  "alwaysOnline": true,
+  "autoViewStatus": true,
+  "antiDelete": true,
+  "autoRead": false,
+  "autoReact": false,
+  "welcome": false,
+  "goodbye": false,
+  "antiLink": false,
+  "antiSpam": false,
+  "aiChat": false,
+  "maintenance": false
+}
