@@ -6,6 +6,7 @@ const { isOwner } = require('./lib/owner');
 const menuSession = require('./lib/menuSession');
 const menuUtils = require('./lib/menuUtils');
 const { commands, loadCommands } = require('./lib/commandManager');
+const autoFeatures = require('./lib/autofeatures');
 
 // ─── MESSAGE HANDLER ───────────────────────────────────────────────────────
 async function handleMessage(sock, msg, text) {
