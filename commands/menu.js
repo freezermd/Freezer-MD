@@ -1,292 +1,294 @@
-```javascript
-// commands/menu.js
+'use strict';
+
+const os = require('os');
 const { commands } = require('../handler');
 
 module.exports = {
     name: 'menu',
-    aliases: ['help', 'cmds'],
-    category: 'general',
-    description: 'Show the main menu or a specific submenu',
-    usage: '.menu [submenu]',
+    aliases: ['help', 'h'],
+    category: 'System',
+    description: 'Show the main command menu with categories',
     async execute({ sock, msg, args, from, config }) {
         const start = Date.now();
-        try {
-            const prefix = config.PREFIX || '.';
-            const botName = config.BOT_NAME || 'Freezer-MD';
-            const version = config.VERSION || '1.0.0';
-            const ownerName = config.OWNER_NAME || 'Freezer';
-            const startTime = config.START_TIME || Date.now();
 
-            // Get the requested submenu (lowercase)
-            const sub = args[0] ? args[0].toLowerCase() : 'main';
-
-            // Build the menu
-            let menuText = '';
-
-            if (sub === 'main') {
-                menuText = buildMainMenu({
-                    botName,
-                    version,
-                    ownerName,
-                    prefix,
-                    startTime,
-                    start
-                });
-            } else {
-                // Check if submenu exists (has commands with that category)
-                const categoryExists = Array.from(commands.values()).some(cmd => 
-                    (cmd.category || '').toLowerCase() === sub
-                );
-
-                if (categoryExists) {
-                    menuText = buildSubMenu(sub, prefix);
-                } else {
-                    menuText = buildErrorMenu(sub, prefix);
-                }
-            }
-
-            // Measure ping (time taken to generate menu)
-            const ping = Date.now() - start;
-            // Replace placeholder {ping} if present, or we can add ping info to main menu already
-            // We'll inject ping into main menu during build, but for submenus we don't display ping.
-            // So we can just send the menu as is.
-
-            await sock.sendMessage(from, { text: menuText });
-        } catch (error) {
-            console.error('Menu command error:', error);
-            await sock.sendMessage(from, { 
-                text: '❌ An error occurred while generating the menu. Please try again later.' 
-            });
+        // Determine what to show: main menu or submenu
+        if (args.length === 0) {
+            await showMainMenu(sock, from, config, start);
+        } else {
+            const categoryQuery = args[0].toLowerCase();
+            await showSubMenu(sock, from, config, categoryQuery, start);
         }
-    }
+    },
 };
 
-/**
- * Build the main menu with system info and submenu list
- */
-function buildMainMenu({ botName, version, ownerName, prefix, startTime, start }) {
-    const uptime = getUptime(startTime);
-    const ram = getRAMUsage();
-    const ping = `${Date.now() - start}ms`;
-    const dateTime = getCurrentDateTime();
-    const totalCommands = commands.size;
+// ─── MAIN MENU ───────────────────────────────────────────────────────────────
+async function showMainMenu(sock, from, config, start) {
+    try {
+        const prefix = config.PREFIX || '.';
+        const botName = config.BOT_NAME || 'FREEZER-MD';
+        const version = config.VERSION || '1.0.0';
+        const owner = config.OWNER_NAME || 'Freezer Cartel';
 
-    // Gather all unique categories from commands
-    const categorySet = new Set();
-    for (const cmd of commands.values()) {
-        if (cmd.category) {
-            categorySet.add(cmd.category.toLowerCase());
-        }
+        // System stats
+        const uptime = process.uptime();
+        const uptimeStr = formatUptime(uptime);
+        const mem = process.memoryUsage();
+        const heapUsed = (mem.heapUsed / 1024 / 1024).toFixed(2);
+        const heapTotal = (mem.heapTotal / 1024 / 1024).toFixed(2);
+        const rss = (mem.rss / 1024 / 1024).toFixed(2);
+
+        // Real ping
+        const ping = Date.now() - start;
+
+        // Commands count
+        const totalCommands = commands.size;
+
+        // Detect categories
+        const categories = getCategories(commands);
+        const totalCategories = categories.size;
+
+        // Current date/time
+        const now = new Date();
+        const dateStr = now.toLocaleDateString('en-US', {
+            weekday: 'short',
+            year: 'numeric',
+            month: 'short',
+            day: 'numeric',
+        });
+        const timeStr = now.toLocaleTimeString('en-US', {
+            hour: '2-digit',
+            minute: '2-digit',
+            second: '2-digit',
+            hour12: true,
+        });
+
+        // Build the menu text
+        const banner = buildBanner(botName);
+        const infoSection = buildInfoSection(owner, botName, version, ping);
+        const systemSection = buildSystemSection(uptimeStr, heapUsed, heapTotal, rss, totalCommands, totalCategories, dateStr, timeStr);
+        const categorySection = buildCategorySection(commands, categories, prefix);
+        const footer = buildFooter(botName);
+
+        const menuText = [
+            banner,
+            '',
+            infoSection,
+            '',
+            systemSection,
+            '',
+            categorySection,
+            '',
+            footer,
+        ].join('\n');
+
+        await sock.sendMessage(from, { text: menuText });
+    } catch (error) {
+        console.error('Error showing main menu:', error);
+        await sock.sendMessage(from, { text: '❌ Failed to load menu. Please try again later.' });
     }
-    // Sort categories alphabetically
-    const categories = Array.from(categorySet).sort();
-
-    // Emoji mapping for known categories
-    const emojiMap = {
-        ai: '🤖',
-        tools: '🛠',
-        downloader: '📥',
-        music: '🎵',
-        news: '📰',
-        fun: '🎮',
-        group: '👥',
-        owner: '👑',
-        settings: '⚙',
-        premium: '🚀',
-        bug: '🐞',
-        system: '📊'
-    };
-
-    // Build menu
-    let menu = `╔══════════════════════════════════════╗\n`;
-    menu += `║  🧊 ${botName.padEnd(34)}║\n`;
-    menu += `╠══════════════════════════════════════╣\n`;
-    menu += `║  👤 Owner    : ${ownerName.padEnd(24)}║\n`;
-    menu += `║  🤖 Bot Name : ${botName.padEnd(24)}║\n`;
-    menu += `║  📌 Version  : ${version.padEnd(24)}║\n`;
-    menu += `║  📶 Ping     : ${ping.padEnd(24)}║\n`;
-    menu += `║  ⏱ Runtime   : ${uptime.padEnd(24)}║\n`;
-    menu += `║  💾 RAM      : ${ram.padEnd(24)}║\n`;
-    menu += `║  📦 Commands : ${totalCommands.toString().padEnd(24)}║\n`;
-    menu += `║  📅 Date     : ${dateTime.date.padEnd(24)}║\n`;
-    menu += `║  ⌚ Time     : ${dateTime.time.padEnd(24)}║\n`;
-    menu += `╠══════════════════════════════════════╣\n`;
-
-    // Submenu list (only categories with commands)
-    if (categories.length === 0) {
-        menu += `║  No submenus available               ║\n`;
-    } else {
-        for (const cat of categories) {
-            const emoji = emojiMap[cat] || '📁';
-            menu += `║  ${emoji} ${cat.charAt(0).toUpperCase() + cat.slice(1).padEnd(30)}║\n`;
-        }
-    }
-
-    menu += `╠══════════════════════════════════════╣\n`;
-    menu += `║  💡 Type: ${prefix}menu <submenu>       ║\n`;
-    menu += `║  📋 Example: ${prefix}menu ai            ║\n`;
-    menu += `╚══════════════════════════════════════╝`;
-
-    return menu;
 }
 
-/**
- * Build a specific submenu showing commands in that category
- */
-function buildSubMenu(category, prefix) {
-    // Collect commands with matching category (case-insensitive)
-    const cmdList = [];
-    for (const [name, cmd] of commands) {
-        if ((cmd.category || '').toLowerCase() === category) {
-            cmdList.push(name);
-        }
-    }
-    cmdList.sort(); // alphabetical
+// ─── SUBMENU ──────────────────────────────────────────────────────────────────
+async function showSubMenu(sock, from, config, categoryQuery, start) {
+    try {
+        const prefix = config.PREFIX || '.';
 
-    // Emoji for category
-    const emojiMap = {
-        ai: '🤖',
-        tools: '🛠',
-        downloader: '📥',
-        music: '🎵',
-        news: '📰',
-        fun: '🎮',
-        group: '👥',
-        owner: '👑',
-        settings: '⚙',
-        premium: '🚀',
-        bug: '🐞',
-        system: '📊'
-    };
-    const emoji = emojiMap[category] || '📁';
-    const catDisplay = category.charAt(0).toUpperCase() + category.slice(1);
-
-    let menu = `╔══════════════════════════════════════╗\n`;
-    menu += `║  ${emoji} ${catDisplay.padEnd(34)}║\n`;
-    menu += `╠══════════════════════════════════════╣\n`;
-
-    if (cmdList.length === 0) {
-        menu += `║  No commands in this category         ║\n`;
-    } else {
-        // Display commands in two columns (as many as fit)
-        const perLine = 2;
-        for (let i = 0; i < cmdList.length; i += perLine) {
-            let line = '║';
-            for (let j = 0; j < perLine; j++) {
-                const idx = i + j;
-                if (idx < cmdList.length) {
-                    const cmdName = cmdList[idx];
-                    const padded = ` ${prefix}${cmdName}`.padEnd(18);
-                    line += padded;
-                } else {
-                    line += ' '.repeat(18);
-                }
+        // Find category (case-insensitive)
+        let targetCategory = null;
+        let categoryIcon = '';
+        const categories = getCategories(commands);
+        for (const [cat, info] of categories) {
+            if (cat.toLowerCase() === categoryQuery) {
+                targetCategory = cat;
+                categoryIcon = info.icon;
+                break;
             }
-            line += '║\n';
-            menu += line;
         }
-    }
 
-    menu += `╠══════════════════════════════════════╣\n`;
-    menu += `║  💡 Type: ${prefix}menu main            ║\n`;
-    menu += `║  📋 To return to main menu            ║\n`;
-    menu += `╚══════════════════════════════════════╝`;
-
-    return menu;
-}
-
-/**
- * Build error menu for invalid submenu
- */
-function buildErrorMenu(invalidSub, prefix) {
-    // Gather available categories
-    const categorySet = new Set();
-    for (const cmd of commands.values()) {
-        if (cmd.category) {
-            categorySet.add(cmd.category.toLowerCase());
+        if (!targetCategory) {
+            // Invalid category - show available categories
+            const available = Array.from(categories.keys())
+                .map(c => `${categories.get(c).icon} ${c}`)
+                .join('\n');
+            const msg = `❌ Invalid Menu: "${categoryQuery}"\n\nAvailable categories:\n${available}\n\n━━━━━━━━━━━━━━━━━━━━━━\nType .menu to return.`;
+            await sock.sendMessage(from, { text: msg });
+            return;
         }
-    }
-    const categories = Array.from(categorySet).sort();
 
-    let menu = `╔══════════════════════════════════════╗\n`;
-    menu += `║  ❌ Invalid Menu: "${invalidSub}"     ║\n`;
-    menu += `╠══════════════════════════════════════╣\n`;
-    menu += `║  Available menus:                    ║\n`;
-
-    if (categories.length === 0) {
-        menu += `║  (none)                             ║\n`;
-    } else {
-        // list in two columns
-        const perLine = 2;
-        for (let i = 0; i < categories.length; i += perLine) {
-            let line = '║';
-            for (let j = 0; j < perLine; j++) {
-                const idx = i + j;
-                if (idx < categories.length) {
-                    const cat = categories[idx];
-                    const padded = ` ${cat}`.padEnd(18);
-                    line += padded;
-                } else {
-                    line += ' '.repeat(18);
-                }
+        // Gather commands in this category
+        const cmds = [];
+        for (const [name, cmd] of commands) {
+            if ((cmd.category || 'General') === targetCategory) {
+                cmds.push(name);
             }
-            line += '║\n';
-            menu += line;
+        }
+        cmds.sort((a, b) => a.localeCompare(b));
+
+        const icon = categoryIcon;
+        const title = `${icon} ${targetCategory.toUpperCase()} COMMANDS`;
+        const count = cmds.length;
+
+        let subText = `╔══════════════════════════════════════════════════╗\n`;
+        subText += `║  ${title.padEnd(46)}║\n`;
+        subText += `╠══════════════════════════════════════════════════╣\n`;
+        if (cmds.length === 0) {
+            subText += `║  No commands in this category.                    ║\n`;
+        } else {
+            for (const cmd of cmds) {
+                subText += `║  ${prefix}${cmd.padEnd(46)}║\n`;
+            }
+        }
+        subText += `╠══════════════════════════════════════════════════╣\n`;
+        subText += `║  📊 Total: ${String(count).padStart(3)} command${count > 1 ? 's' : ''}                     ║\n`;
+        subText += `╚══════════════════════════════════════════════════╝\n`;
+        subText += `\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n`;
+        subText += `💡 Type .menu to return to main menu.`;
+
+        await sock.sendMessage(from, { text: subText });
+    } catch (error) {
+        console.error('Error showing submenu:', error);
+        await sock.sendMessage(from, { text: '❌ Failed to load submenu. Please try again.' });
+    }
+}
+
+// ─── HELPERS ──────────────────────────────────────────────────────────────────
+
+function getCategories(commandsMap) {
+    const categoryOrder = [
+        'AI',
+        'Downloader',
+        'Music',
+        'News',
+        'Tools',
+        'Group',
+        'Fun',
+        'Owner',
+        'Settings',
+        'Premium',
+        'Bug',
+        'System',
+    ];
+    const iconMap = {
+        AI: '🤖',
+        Downloader: '📥',
+        Music: '🎵',
+        News: '📰',
+        Tools: '🛠',
+        Group: '👥',
+        Fun: '🎮',
+        Owner: '👑',
+        Settings: '⚙',
+        Premium: '🚀',
+        Bug: '🐞',
+        System: '📊',
+    };
+    // Collect categories from commands
+    const catSet = new Set();
+    for (const [, cmd] of commandsMap) {
+        const category = cmd.category || 'General';
+        catSet.add(category);
+    }
+    // Sort by predefined order, then alphabetically for others
+    const sorted = Array.from(catSet).sort((a, b) => {
+        const idxA = categoryOrder.indexOf(a);
+        const idxB = categoryOrder.indexOf(b);
+        if (idxA === -1 && idxB === -1) return a.localeCompare(b);
+        if (idxA === -1) return 1;
+        if (idxB === -1) return -1;
+        return idxA - idxB;
+    });
+    const result = new Map();
+    for (const cat of sorted) {
+        const icon = iconMap[cat] || '📌';
+        result.set(cat, { icon });
+    }
+    return result;
+}
+
+function buildBanner(botName) {
+    // A stylish Unicode banner with box-drawing and cyber theme
+    const lines = [
+        '╔══════════════════════════════════════════════════╗',
+        '║ ███████╗██████╗ ███████╗███████╗███████╗██████╗ ║',
+        '║ ██╔════╝██╔══██╗██╔════╝╚══███╔╝╚══███╔╝██╔══██╗║',
+        '║ █████╗  ██████╔╝█████╗    ███╔╝   ███╔╝ ██████╔╝║',
+        '║ ██╔══╝  ██╔══██╗██╔══╝   ███╔╝   ███╔╝  ██╔══██╗║',
+        '║ ██║     ██║  ██║███████╗███████╗███████╗██║  ██║║',
+        '║ ╚═╝     ╚═╝  ╚═╝╚══════╝╚══════╝╚══════╝╚═╝  ╚═╝║',
+        '║                                                    ║',
+        `║         🧊 ${botName.padEnd(28)}🧊         ║`,
+        '╚══════════════════════════════════════════════════╝',
+    ];
+    return lines.join('\n');
+}
+
+function buildInfoSection(owner, botName, version, ping) {
+    return [
+        '📋 BOT INFORMATION',
+        '────────────────────',
+        `👤 Owner       : ${owner}`,
+        `🤖 Bot Name    : ${botName}`,
+        `📌 Version     : ${version}`,
+        `📶 Real Ping   : ${ping}ms`,
+    ].join('\n');
+}
+
+function buildSystemSection(uptime, heapUsed, heapTotal, rss, totalCommands, totalCategories, date, time) {
+    return [
+        '📊 SYSTEM INFORMATION',
+        '────────────────────',
+        `⏱ Runtime      : ${uptime}`,
+        `💾 Heap Used   : ${heapUsed} MB`,
+        `💾 Heap Total  : ${heapTotal} MB`,
+        `🧠 RSS Memory  : ${rss} MB`,
+        `📦 Commands    : ${totalCommands}`,
+        `📂 Categories  : ${totalCategories}`,
+        `📅 Date        : ${date}`,
+        `⌚ Time        : ${time}`,
+        `🟢 Status      : Online`,
+    ].join('\n');
+}
+
+function buildCategorySection(commandsMap, categories, prefix) {
+    const lines = ['📂 COMMAND CATEGORIES', '────────────────────'];
+    for (const [category, info] of categories) {
+        // Count commands in this category
+        let count = 0;
+        for (const [, cmd] of commandsMap) {
+            if ((cmd.category || 'General') === category) {
+                count++;
+            }
+        }
+        if (count > 0) {
+            lines.push(`${info.icon} ${category.padEnd(14)} : ${count} command${count > 1 ? 's' : ''}`);
         }
     }
-
-    menu += `╠══════════════════════════════════════╣\n`;
-    menu += `║  💡 Type: ${prefix}menu <submenu>      ║\n`;
-    menu += `║  📋 Example: ${prefix}menu ai           ║\n`;
-    menu += `╚══════════════════════════════════════╝`;
-
-    return menu;
+    lines.push(`────────────────────`);
+    lines.push(`💡 Type ${prefix}menu <category> to view commands`);
+    return lines.join('\n');
 }
 
-/**
- * Helper: Get formatted uptime
- */
-function getUptime(startTime) {
-    const now = Date.now();
-    const diff = now - startTime;
-    if (diff < 0) return 'N/A';
-    const seconds = Math.floor(diff / 1000);
-    const minutes = Math.floor(seconds / 60);
-    const hours = Math.floor(minutes / 60);
-    const days = Math.floor(hours / 24);
-
-    if (days > 0) return `${days}d ${hours % 24}h`;
-    if (hours > 0) return `${hours}h ${minutes % 60}m`;
-    if (minutes > 0) return `${minutes}m ${seconds % 60}s`;
-    return `${seconds}s`;
+function buildFooter(botName) {
+    return [
+        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+        `🧊 ${botName}`,
+        '⚡ Fast • Secure • Powerful',
+        '💻 Powered by Node.js',
+        '🚀 Built with Baileys',
+        '❤️ Developed by Freezer Cartel',
+        '━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━',
+    ].join('\n');
 }
 
-/**
- * Helper: Get RAM usage
- */
-function getRAMUsage() {
-    const used = process.memoryUsage();
-    const heapUsed = (used.heapUsed / 1024 / 1024).toFixed(2);
-    const heapTotal = (used.heapTotal / 1024 / 1024).toFixed(2);
-    return `${heapUsed}MB / ${heapTotal}MB`;
+function formatUptime(seconds) {
+    const d = Math.floor(seconds / 86400);
+    const h = Math.floor((seconds % 86400) / 3600);
+    const m = Math.floor((seconds % 3600) / 60);
+    const s = Math.floor(seconds % 60);
+    const parts = [];
+    if (d > 0) parts.push(`${d}d`);
+    if (h > 0) parts.push(`${h}h`);
+    if (m > 0) parts.push(`${m}m`);
+    if (s > 0 || parts.length === 0) parts.push(`${s}s`);
+    return parts.join(' ');
 }
-
-/**
- * Helper: Get current date and time as separate strings
- */
-function getCurrentDateTime() {
-    const now = new Date();
-    const date = now.toLocaleDateString('en-US', {
-        month: 'short',
-        day: 'numeric',
-        year: 'numeric',
-    });
-    const time = now.toLocaleTimeString('en-US', {
-        hour: '2-digit',
-        minute: '2-digit',
-        second: '2-digit',
-        hour12: false,
-    });
-    return { date, time };
-}
-```
