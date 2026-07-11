@@ -10,22 +10,30 @@ module.exports = {
 
     async execute({ sock, from, config }) {
 
-        const start = Date.now();
+        const start = process.hrtime.bigint();
 
-        // Send temporary message
         const sent = await sock.sendMessage(from, {
-            text: '🏓 Testing bot speed...'
+            text: '⚡ Measuring Freezer-MD performance...'
         });
 
-        const ping = Date.now() - start;
+        const end = process.hrtime.bigint();
+        const ping = (Number(end - start) / 1000000).toFixed(2);
 
-        // Memory
+        // RAM
         const memory = process.memoryUsage();
+        const ramUsed = memory.heapUsed / 1024 / 1024;
+        const ramTotal = memory.heapTotal / 1024 / 1024;
 
-        const ramUsed = (memory.heapUsed / 1024 / 1024).toFixed(2);
-        const ramTotal = (memory.heapTotal / 1024 / 1024).toFixed(2);
+        const ramPercent = Math.min(
+            Math.round((ramUsed / ramTotal) * 100),
+            100
+        );
 
-        // Uptime
+        const ramBar =
+            "█".repeat(Math.floor(ramPercent / 10)) +
+            "░".repeat(10 - Math.floor(ramPercent / 10));
+
+        // Runtime
         const uptime = process.uptime();
 
         const days = Math.floor(uptime / 86400);
@@ -33,43 +41,56 @@ module.exports = {
         const minutes = Math.floor((uptime % 3600) / 60);
         const seconds = Math.floor(uptime % 60);
 
-        const runtime =
-            `${days}d ${hours}h ${minutes}m ${seconds}s`;
+        const runtime = `${days}d ${hours}h ${minutes}m ${seconds}s`;
+
+        // CPU
+        const cpu = os.cpus()[0];
+
+        // System
+        const hostname = os.hostname();
+        const arch = os.arch();
+        const platform = os.platform();
 
         const message = `
-╭━━━〔 🏓 FREEZER SPEED TEST 〕━━━⬣
+╭━━━━━━━━━━━━━━━━━━━━━━⬣
+┃ ❄️ *FREEZER-MD SYSTEM*
+┣━━━━━━━━━━━━━━━━━━━━━━⬣
 
-⚡ Ping
-${ping} ms
+⚡ *Speed*
+> ${ping} ms
 
-🟢 Status
-Online
+🟢 *Status*
+> Online
 
-⏳ Runtime
-${runtime}
+⏳ *Runtime*
+> ${runtime}
 
-💾 RAM
-${ramUsed} MB / ${ramTotal} MB
+💾 *Memory*
+> ${ramBar} ${ramPercent}%
+> ${ramUsed.toFixed(2)} MB / ${ramTotal.toFixed(2)} MB
 
-🖥 Platform
-${os.platform()}
+🧠 *CPU*
+> ${cpu.model}
 
-⚙ CPU
-${os.cpus()[0].model}
+🖥 *Platform*
+> ${platform} (${arch})
 
-🧩 Node.js
-${process.version}
+🌐 *Host*
+> ${hostname}
 
-🤖 Bot
-${config.BOT_NAME}
+🟩 *Node.js*
+> ${process.version}
 
-📌 Version
-${config.VERSION || "1.0.0"}
+🤖 *Bot*
+> ${config.BOT_NAME}
 
-╰━━━━━━━━━━━━━━━━━━━━⬣
-`;
+📌 *Version*
+> ${config.VERSION || "2.0.0"}
 
-        // Edit if supported
+━━━━━━━━━━━━━━━━━━━━━━━
+⚡ Powered by *FREEZER CARTEL*
+╰━━━━━━━━━━━━━━━━━━━━━━⬣`;
+
         await sock.sendMessage(from, {
             text: message,
             edit: sent.key
@@ -78,6 +99,5 @@ ${config.VERSION || "1.0.0"}
                 text: message
             });
         });
-
     }
 };
