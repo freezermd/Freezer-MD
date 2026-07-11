@@ -1,32 +1,29 @@
-
 'use strict';
 
 const config = require('../config');
 
 module.exports = {
     name: 'settings',
-    aliases: ['setting', 'config'],
-    description: 'Show bot settings',
+    aliases: ['setting', 'panel'],
+    description: 'View current bot settings',
     ownerOnly: true,
 
     async execute({ sock, from }) {
 
-        const status = (value) => value ? '🟢 ON' : '🔴 OFF';
+        const status = (value) =>
+            value === true || value === 'true'
+                ? '🟢 ON'
+                : '🔴 OFF';
 
-        const message = `⚙️ FREEZER-MD SETTINGS
+        const text = `
+⚙️ *FREEZER-MD OWNER PANEL*
 ━━━━━━━━━━━━━━━━━━
 
 🤖 Bot Name
 ${config.BOT_NAME}
 
-📌 Prefix
-${config.PREFIX}
-
 👑 Owner
 ${config.OWNER_NUMBER}
-
-━━━━━━━━━━━━━━━━━━
-FEATURES
 
 ⌨️ Auto Typing
 ${status(config.AUTO_TYPING)}
@@ -43,11 +40,16 @@ ${status(config.AUTO_VIEW_STATUS)}
 🛡️ Anti Delete
 ${status(config.ANTI_DELETE)}
 
+📌 Prefix
+${config.PREFIX}
+
 ━━━━━━━━━━━━━━━━━━
-Use future commands to change settings.
+Freezer-MD Control Panel
+`;
 
-🧊 Freezer-MD`;
+        await sock.sendMessage(from, {
+            text
+        });
 
-        await sock.sendMessage(from, { text: message });
     }
 };
