@@ -193,7 +193,9 @@ async function handleWaitingArgsReply(sock, from, sender, text, session) {
 // ─── COMMAND EXECUTOR ──────────────────────────────────────────────────────
 
 async function executeCommand(sock, from, cmdName, args, originalMsg) {
+
     let cmd = commands.get(cmdName);
+
     if (!cmd) {
         for (const [, c] of commands) {
             if (c.name === cmdName) {
@@ -202,12 +204,27 @@ async function executeCommand(sock, from, cmdName, args, originalMsg) {
             }
         }
     }
+
     if (!cmd) {
-        await sock.sendMessage(from, { text: `❌ Command "${cmdName}" not found.` });
-        return;
+        return await sock.sendMessage(from, {
+            text: `❌ Command "${cmdName}" not found.`
+        });
     }
 
     try {
+
+        // Auto Typing
+        if (autoFeatures.autoTyping) {
+            await sock.sendPresenceUpdate('composing', from);
+            await new Promise(resolve => setTimeout(resolve, 1500));
+        }
+
+        // Auto Recording
+        if (autoFeatures.autoRecording) {
+            await sock.sendPresenceUpdate('recording', from);
+            await new Promise(resolve => setTimeout(resolve, 1500));
+        }
+
         await cmd.execute({
             sock,
             msg: originalMsg,
@@ -215,10 +232,17 @@ async function executeCommand(sock, from, cmdName, args, originalMsg) {
             from,
             config
         });
+
     } catch (err) {
-        console.error(`Error executing menu command ${cmdName}:`, err);
-        await sock.sendMessage(from, { text: `❌ Failed to execute ${cmdName}.` });
+
+        console.error(`[ ❌ ] Error executing ${cmdName}:`, err);
+
+        await sock.sendMessage(from, {
+            text: `❌ Failed to execute *${cmdName}*.`
+        });
+
     }
+
 }
 
 module.exports = { handleMessage, commands, loadCommands };
