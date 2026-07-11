@@ -1,69 +1,83 @@
 'use strict';
 
+const os = require('os');
+
 module.exports = {
-    name: 'pingall',
-    aliases: ['allping', 'fullping'],
-    description: 'Comprehensive latency report',
-    async execute({ sock, from, client }) {
+    name: 'ping',
+    aliases: ['speed', 'alive'],
+    description: 'Check bot speed and system status',
+    category: 'System',
+
+    async execute({ sock, from, config }) {
+
         const start = Date.now();
 
-        const sent = await sock.sendMessage(from, { text: '⏳ Gathering all pings...' });
+        // Send temporary message
+        const sent = await sock.sendMessage(from, {
+            text: '🏓 Testing bot speed...'
+        });
 
-        // 1. Message round-trip
-        const msgStart = Date.now();
-        await sock.sendMessage(from, { text: '📨' });
-        const msgLatency = Date.now() - msgStart;
+        const ping = Date.now() - start;
 
-        // 2. WebSocket ping
-        let wsPing = 'N/A';
-        if (client?.ws?.ping) {
-            wsPing = client.ws.ping + 'ms';
-        } else if (client?.ws?.getPing) {
-            wsPing = client.ws.getPing() + 'ms';
-        }
+        // Memory
+        const memory = process.memoryUsage();
 
-        // 3. Database ping (optional)
-        let dbPing = 'N/A';
-        try {
-            const db = global.db;
-            if (db) {
-                const dbStart = Date.now();
-                if (db.command) await db.command({ ping: 1 });
-                else if (db.query) await db.query('SELECT 1');
-                dbPing = Date.now() - dbStart + 'ms';
-            }
-        } catch {}
+        const ramUsed = (memory.heapUsed / 1024 / 1024).toFixed(2);
+        const ramTotal = (memory.heapTotal / 1024 / 1024).toFixed(2);
 
-        // 4. System info
-        const uptime = formatUptime(process.uptime());
-        const mem = (process.memoryUsage().heapUsed / 1024 / 1024).toFixed(2);
+        // Uptime
+        const uptime = process.uptime();
 
-        const total = Date.now() - start;
+        const days = Math.floor(uptime / 86400);
+        const hours = Math.floor((uptime % 86400) / 3600);
+        const minutes = Math.floor((uptime % 3600) / 60);
+        const seconds = Math.floor(uptime % 60);
 
-        const responseText = `📊 Full Ping Report
+        const runtime =
+            `${days}d ${hours}h ${minutes}m ${seconds}s`;
 
-📨 Message round-trip: ${msgLatency}ms
-🔄 WebSocket latency: ${wsPing}
-🗄️  Database latency: ${dbPing}
+        const message = `
+╭━━━〔 🏓 FREEZER SPEED TEST 〕━━━⬣
 
-⏳ Uptime: ${uptime}
-💾 Heap used: ${mem} MB
+⚡ Ping
+${ping} ms
 
-⏱️ Total response time: ${total}ms`;
+🟢 Status
+Online
 
+⏳ Runtime
+${runtime}
+
+💾 RAM
+${ramUsed} MB / ${ramTotal} MB
+
+🖥 Platform
+${os.platform()}
+
+⚙ CPU
+${os.cpus()[0].model}
+
+🧩 Node.js
+${process.version}
+
+🤖 Bot
+${config.BOT_NAME}
+
+📌 Version
+${config.VERSION || "1.0.0"}
+
+╰━━━━━━━━━━━━━━━━━━━━⬣
+`;
+
+        // Edit if supported
         await sock.sendMessage(from, {
-            text: responseText,
+            text: message,
             edit: sent.key
         }).catch(async () => {
-            await sock.sendMessage(from, { text: responseText });
+            await sock.sendMessage(from, {
+                text: message
+            });
         });
-    },
-};
 
-function formatUptime(seconds) {
-    const d = Math.floor(seconds / 86400);
-    const h = Math.floor((seconds % 86400) / 3600);
-    const m = Math.floor((seconds % 3600) / 60);
-    const s = Math.floor(seconds % 60);
-    return `${d}d ${h}h ${m}m ${s}s`;
-}
+    }
+};
