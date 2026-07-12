@@ -1,4 +1,3 @@
-// handler.js
 'use strict';
 
 const config = require('./config');
@@ -33,39 +32,24 @@ async function handleMessage(sock, msg, text) {
     const cmd = commands.get(cmdName.toLowerCase());
     if (!cmd) return;
 
-try {
-    if (cmd.ownerOnly && !isOwner(sender)) {
-        return await sock.sendMessage(from, {
-            text: '⛔ This command is for the bot owner only.'
-        });
-    }
+    // ---------- 3. EXECUTE COMMAND (with error handling) ----------
+    try {
+        if (cmd.ownerOnly && !isOwner(sender)) {
+            return await sock.sendMessage(from, {
+                text: '⛔ This command is for the bot owner only.'
+            });
+        }
 
-    // ───── AUTO FEATURES ─────
-    if (autoFeatures.autoTyping) {
-        await sock.sendPresenceUpdate('composing', from);
-        await new Promise(resolve => setTimeout(resolve, 1500));
-    }
+        // ───── AUTO FEATURES ─────
+        if (autoFeatures.autoTyping) {
+            await sock.sendPresenceUpdate('composing', from);
+            await new Promise(resolve => setTimeout(resolve, 1500));
+        }
 
-    if (autoFeatures.autoRecording) {
-        await sock.sendPresenceUpdate('recording', from);
-        await new Promise(resolve => setTimeout(resolve, 1500));
-    }
-
-    await cmd.execute({
-        sock,
-        msg,
-        args,
-        from,
-        config
-    });
-
-} catch (e) {
-    console.error(`[ ❌ ] Command "${cmdName}" failed:`, e.message);
-
-    await sock.sendMessage(from, {
-        text: `⚠️ Something went wrong running *${cmdName}*.`
-    });
-}
+        if (autoFeatures.autoRecording) {
+            await sock.sendPresenceUpdate('recording', from);
+            await new Promise(resolve => setTimeout(resolve, 1500));
+        }
 
         await cmd.execute({
             sock,
