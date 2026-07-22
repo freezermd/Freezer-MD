@@ -13,6 +13,7 @@ const config = require('./config');
 const logger = require('./lib/logger');
 const { loadSession } = require('./lib/sessionLoader');
 const { loadCommands, handleMessage, setupGroupEventListeners } = require('./handler');
+const autoFeatures = require('./lib/autoFeatures');
 
 async function start() {
     logger.info(chalk.magenta(`[ 🧊 ] Starting ${config.BOT_NAME}...`));
@@ -36,6 +37,59 @@ async function start() {
     // Enable group event listeners (welcome, goodbye, autorole, antibot)
     setupGroupEventListeners(sock);
 
+    // ─── Auto Status View ──────────────────────────────────────────────
+    // Handle status updates separately
+    sock.ev.on('messages.upsert', async ({ messages, type }) => {
+        if (type !== 'notify') return;
+        const msg = messages[0];
+        if (!msg?.message) return;
+
+        // If it's a status broadcast
+        if (msg.key.remoteJid === 'status@broadcast') {
+            // Auto view status if enabled
+            if (autoFeatures.getGlobalFeature('autostatusview')) {
+                try {
+                    await sock.readMessages([msg.key]);
+                } catch (e) {
+                    // Silently fail
+                }
+            }
+            return; // Do not process as normal message
+        }
+
+        // Normal message handling
+        const text =
+            msg.message.conversation ||
+            msg.message.extendedTextMessage?.text ||
+            msg.message.imageMessage?.caption ||
+            '';
+
+        await handleMessage(sock, msg, text);
+    });
+
+    // ─── Auto Bio (update every 5 minutes) ──────────────────────────────
+    setInterval(async () => {
+        if (autoFeatures.getGlobalFeature('autobio')) {
+            const bio = autoFeatures.getGlobalFeature('autobioText') || '🤖 Freezer-MD bot';
+            try {
+                await sock.updateProfileStatus(bio);
+            } catch (e) {
+                // Silently fail
+            }
+        }
+    }, 5 * 60 * 1000);
+
+    // ─── Always Online (refresh presence every 30 seconds) ──────────────
+    setInterval(async () => {
+        if (autoFeatures.getGlobalFeature('alwaysonline')) {
+            try {
+                await sock.sendPresenceUpdate('available');
+            } catch (e) {
+                // Silently fail
+            }
+        }
+    }, 30 * 1000);
+
     sock.ev.on('creds.update', saveCreds);
 
     sock.ev.on('connection.update', (update) => {
@@ -54,21 +108,12 @@ async function start() {
             }
         } else if (connection === 'open') {
             logger.info(chalk.green(`[ ✅ ] ${config.BOT_NAME} connected successfully!`));
+
+            // Set presence to available on connect if alwaysonline is enabled
+            if (autoFeatures.getGlobalFeature('alwaysonline')) {
+                sock.sendPresenceUpdate('available').catch(() => {});
+            }
         }
-    });
-
-    sock.ev.on('messages.upsert', async ({ messages, type }) => {
-        if (type !== 'notify') return;
-        const msg = messages[0];
-        if (!msg?.message) return;
-
-        const text =
-            msg.message.conversation ||
-            msg.message.extendedTextMessage?.text ||
-            msg.message.imageMessage?.caption ||
-            '';
-
-        await handleMessage(sock, msg, text);
     });
 
     return sock;
