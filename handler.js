@@ -5,67 +5,122 @@ const { isOwner } = require('./lib/owner');
 const { commands, loadCommands } = require('./lib/commandManager');
 const { getGroupSetting } = require('./utils/db');
 const { isAdmin } = require('./utils/groupUtils');
-const { sendTyping, sendRecording, autoReact, autoRead } = require('./lib/autoFeatures');
+const {
+    sendTyping,
+    sendRecording,
+    autoReact,
+    autoRead
+} = require('./lib/autoFeatures');
 
 async function handleMessage(sock, msg, text) {
     const from = msg.key.remoteJid;
     const sender = msg.key.participant || from;
 
     if (msg.key.fromMe) return;
+    if (!text) return;
 
-    // Auto typing & recording (non‑blocking)
-    const isCommand = text && text.startsWith(config.PREFIX);
+    // ==========================
+    // Auto Typing & Recording
+    // ==========================
+    const isCommand = text.startsWith(config.PREFIX);
+
     if (!isCommand) {
         sendTyping(sock, from, 600).catch(() => {});
         sendRecording(sock, from, 1000).catch(() => {});
     }
 
-    // Group moderation (keep your existing checks)
+    // ==========================
+    // Group Moderation
+    // ==========================
     if (from.endsWith('@g.us')) {
         const mutedList = getGroupSetting(from, 'muted', []);
+
         if (mutedList.includes(sender)) {
             const isSenderAdmin = await isAdmin(sock, from, sender);
+
             if (!isSenderAdmin) {
-                await sock.sendMessage(from, { delete: msg.key });
+                await sock.sendMessage(from, {
+                    delete: msg.key
+                });
+
                 await sock.sendMessage(from, {
                     text: `🔇 @${sender.split('@')[0]}, you are muted.`,
                     mentions: [sender]
                 });
+
                 return;
             }
         }
-        // ... antilink, antibadword, antispam (copy from previous)
+
+        // Keep your existing:
+        // Anti-Link
+        // Anti-BadWord
+        // Anti-Spam
+        // Anti-Bot
+        // Welcome/Goodbye
     }
 
-    // Command handling
-    if (text && text.startsWith(config.PREFIX)) {
+    // ==========================
+    // Command Handling
+    // ==========================
+    if (isCommand) {
         const body = text.slice(config.PREFIX.length).trim();
-        const [cmdName, ...args] = body.split(/\s+/);
-        const cmd = commands.get(cmdName?.toLowerCase());
-        if (cmd) {
-            try {
-                if (cmd.ownerOnly && !isOwner(sender)) {
-                    await sock.sendMessage(from, { text: '⛔ Owner only command.' });
-                } else {
-                    await cmd.execute({ sock, msg, args, from, config });
-                }
-            } catch (e) {
-                console.error(`Command "${cmdName}" failed:`, e.message);
-                await sock.sendMessage(from, { text: `⚠️ Something went wrong.` });
+
+        if (!body) return;
+
+        const args = body.split(/\s+/);
+        const cmdName = args.shift().toLowerCase();
+
+        const cmd = commands.get(cmdName);
+
+        if (!cmd) {
+            return await sock.sendMessage(from, {
+                text: `❌ Unknown command.\nType *${config.PREFIX}menu* to view all commands.`
+            });
+        }
+
+        try {
+            if (cmd.ownerOnly && !isOwner(sender)) {
+                return await sock.sendMessage(from, {
+                    text: '⛔ Owner only command.'
+                });
             }
+
+            await cmd.execute({
+                sock,
+                msg,
+                args,
+                from,
+                sender,
+                config
+            });
+
+        } catch (err) {
+            console.error(`❌ Command "${cmdName}" failed:`);
+            console.error(err);
+
+            await sock.sendMessage(from, {
+                text: '⚠️ An error occurred while executing that command.'
+            });
         }
     }
 
-    // Auto react & read
+    // ==========================
+    // Auto Features
+    // ==========================
     try {
         await autoReact(sock, msg, from);
         await autoRead(sock, msg, from);
-    } catch (e) {}
+    } catch (err) {
+        // Ignore auto-feature errors
+    }
 }
 
-// Group event listeners (welcome, goodbye, autorole) – keep as before
+// ==========================
+// Group Event Listeners
+// ==========================
 function setupGroupEventListeners(sock) {
-    // ... your existing implementation
+    // Keep your existing implementation
 }
 
 module.exports = {
