@@ -1,27 +1,54 @@
 'use strict';
 
 const { commands } = require('../lib/commandManager');
-const menuSession = require('../lib/menuSession');
-const menuUtils = require('../lib/menuUtils');
+const config = require('../config');
 
 module.exports = {
     name: 'menu',
     aliases: ['help'],
     category: 'System',
-    description: 'Interactive menu system',
-    async execute({ sock, msg, args, from, config }) {
-        try {
-            const userJid = msg.key.participant || from;
-            menuSession.deleteSession(userJid); // fresh start
+    description: 'Show all bot commands',
 
-            const menuText = menuUtils.buildMainMenu(commands, userJid);
-            const sentMsg = await sock.sendMessage(from, { text: menuText });
+    async execute({ sock, from }) {
+        const categories = {};
 
-            // Create session with the message key for reply detection
-            menuSession.createSession(userJid, sentMsg.key);
-        } catch (error) {
-            console.error('[menu.js] Error:', error);
-            throw error; // rethrow for handler to catch
+        // Group commands by category and remove duplicates
+        for (const [, cmd] of commands) {
+            const category = cmd.category || 'General';
+
+            if (!categories[category]) {
+                categories[category] = [];
+            }
+
+            if (!categories[category].includes(cmd.name)) {
+                categories[category].push(cmd.name);
+            }
         }
+
+        let text = `
+╭━━━〔 ❄️ ${config.BOT_NAME} ❄️ 〕━━━⬣
+┃ 🤖 Prefix: ${config.PREFIX}
+┃ 📚 Commands: ${new Set([...commands.values()]).size}
+╰━━━━━━━━━━━━━━━━⬣
+`;
+
+        for (const category of Object.keys(categories).sort()) {
+            text += `\n╭─❏ ${category.toUpperCase()}\n`;
+
+            categories[category]
+                .sort()
+                .forEach(cmd => {
+                    text += `│ ${config.PREFIX}${cmd}\n`;
+                });
+
+            text += `╰────────────⬣\n`;
+        }
+
+        text += `
+━━━━━━━━━━━━━━━━━━
+⚡ Powered By FREEZER CARTEL
+`;
+
+        await sock.sendMessage(from, { text });
     }
 };
