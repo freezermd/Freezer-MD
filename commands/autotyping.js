@@ -1,45 +1,31 @@
-'use strict';
-
-const autoFeatures = require('../lib/autofeatures');
+// commands/autotyping.js
+const { isFeatureEnabledForChat, setFeatureForChat } = require('../lib/autoFeatures');
 
 module.exports = {
     name: 'autotyping',
-    aliases: ['typing'],
-    description: 'Toggle auto typing',
-    category: 'Owner',
-    ownerOnly: true,
+    aliases: ['autotype'],
+    category: 'features',
+    description: 'Toggle auto-typing (sends typing presence)',
+    usage: '.autotyping on/off',
+    async execute({ sock, msg, args, from, config }) {
+        try {
+            const option = args[0]?.toLowerCase();
+            if (option !== 'on' && option !== 'off') {
+                return sock.sendMessage(from, {
+                    text: '❌ Usage: .autotyping on/off'
+                });
+            }
 
-    async execute({ sock, from, args }) {
+            const value = option === 'on';
+            setFeatureForChat(from, 'autotyping', value);
 
-        if (!args[0]) {
-            return sock.sendMessage(from, {
-                text:
-`⌨️ Auto Typing
-
-Current:
-${autoFeatures.autoTyping ? "✅ ON" : "❌ OFF"}
-
-Usage
-
-.autotyping on
-.autotyping off`
+            const status = value ? 'enabled ✅' : 'disabled ❌';
+            await sock.sendMessage(from, {
+                text: `📝 Auto-typing has been ${status} for this chat.`
             });
+        } catch (error) {
+            console.error('AutoTyping error:', error);
+            await sock.sendMessage(from, { text: '❌ Failed to toggle auto-typing.' });
         }
-
-        const state = args[0].toLowerCase();
-
-        if (state === "on") {
-            autoFeatures.autoTyping = true;
-        }
-
-        if (state === "off") {
-            autoFeatures.autoTyping = false;
-        }
-
-        await sock.sendMessage(from, {
-            text:
-`✅ Auto Typing is now ${autoFeatures.autoTyping ? "ON" : "OFF"}`
-        });
-
     }
 };
