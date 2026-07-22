@@ -12,7 +12,7 @@ const pino = require('pino');
 const config = require('./config');
 const logger = require('./lib/logger');
 const { loadSession } = require('./lib/sessionLoader');
-const { loadCommands, handleMessage } = require('./handler');
+const { loadCommands, handleMessage, setupGroupEventListeners } = require('./handler');
 
 async function start() {
     logger.info(chalk.magenta(`[ 🧊 ] Starting ${config.BOT_NAME}...`));
@@ -32,6 +32,9 @@ async function start() {
         printQRInTerminal: true,
         browser: [config.BOT_NAME, 'Chrome', '1.0.0'],
     });
+
+    // Enable group event listeners (welcome, goodbye, autorole, antibot)
+    setupGroupEventListeners(sock);
 
     sock.ev.on('creds.update', saveCreds);
 
